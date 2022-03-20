@@ -1,0 +1,12 @@
+min_range: 1.0
+max_range: 100.0
+scan_period: 0.1
+LINES: 16
+N_SCAN: 1800
+angle_gap: 2.0
+angle_x: 0.2
+diff_threshold: 0.1
+PUB_EACH_LINE: true
+sharp_count_threshold: 6
+less_sharp_count_threshold: 20
+surf_count_threshold: 5
