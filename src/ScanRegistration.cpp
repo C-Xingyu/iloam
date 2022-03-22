@@ -4,7 +4,7 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-17 21:17:17
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-03-22 15:51:53
+ * @LastEditTime: 2022-03-22 16:50:51
  */
 #include "../include/utility.h"
 #include <ros/ros.h>
@@ -69,10 +69,10 @@ public:
     int surf_count_threshold;
 
 public:
-    iScanRegistration() : original_cloud(new PointCloud()), filtered_cloud(new PointCloud()),
-                          sorted_cloud(new PointCloud()), sharp_cloud(new PointCloud()),
-                          surf_cloud(new PointCloud()), less_sharp_cloud(new PointCloud()),
-                          less_surf_cloud(new PointCloud()), frame_count(0)
+    iScanRegistration(ros::NodeHandle &inh) : original_cloud(new PointCloud()), filtered_cloud(new PointCloud()),
+                                              sorted_cloud(new PointCloud()), sharp_cloud(new PointCloud()),
+                                              surf_cloud(new PointCloud()), less_sharp_cloud(new PointCloud()),
+                                              less_surf_cloud(new PointCloud()), frame_count(0), nh(inh)
 
     {
         frame_count++;
@@ -122,32 +122,32 @@ public:
 
     void InitialParams()
     {
-        nh.getParam("cloud_topic", cloud_topic);
-        nh.getParam("min_range", min_range);
-        nh.getParam("max_range", max_range);
-        nh.getParam("scan_period", scan_period);
-        nh.getParam("LINES", LINES);
-        nh.getParam("N_SCAN", N_SCAN);
-        nh.getParam("angle_gap", angle_gap);
-        nh.getParam("angle_x", angle_x);
-        nh.getParam("diff_threshold", diff_threshold);
-        nh.getParam("PUB_EACH_LINE", PUB_EACH_LINE);
-        nh.getParam("sharp_count_threshold", sharp_count_threshold);
-        nh.getParam("less_sharp_count_threshold", less_sharp_count_threshold);
-        nh.getParam("surf_count_threshold", surf_count_threshold);
-        // nh.param<std::string>("cloud_topic", cloud_topic, "/velodyne_points");
-        //  nh.param<double>("min_range", min_range, 1.0);
-        //  nh.param<double>("max_range", max_range, 100.0);
-        //  nh.param<double>("scan_period", scan_period, 0.1);
-        //  nh.param<int>("LINES", LINES, 16);
-        //  nh.param<int>("N_SCAN", N_SCAN, 1800);
-        //  nh.param<double>("angle_gap", angle_gap, 2.0);
-        //  nh.param<double>("angle_x", angle_x, 0.2);
-        //  nh.param<double>("diff_threshold", diff_threshold, 0.1);
-        //  nh.param<bool>("PUB_EACH_LINE", PUB_EACH_LINE, true);
-        //  nh.param<int>("sharp_count_threshold", sharp_count_threshold, 3);
-        //  nh.param<int>("less_sharp_count_threshold", less_sharp_count_threshold, 20);
-        //  nh.param<int>("surf_count_threshold", surf_count_threshold, 5);
+        // nh.getParam("cloud_topic", cloud_topic, "/rslidar_points");
+        // nh.getParam("min_range", min_range);
+        // nh.getParam("max_range", max_range);
+        // nh.getParam("scan_period", scan_period);
+        // nh.getParam("LINES", LINES);
+        // nh.getParam("N_SCAN", N_SCAN);
+        // nh.getParam("angle_gap", angle_gap);
+        // nh.getParam("angle_x", angle_x);
+        // nh.getParam("diff_threshold", diff_threshold);
+        // nh.getParam("PUB_EACH_LINE", PUB_EACH_LINE);
+        // nh.getParam("sharp_count_threshold", sharp_count_threshold);
+        // nh.getParam("less_sharp_count_threshold", less_sharp_count_threshold);
+        // nh.getParam("surf_count_threshold", surf_count_threshold);
+        nh.param<std::string>("cloud_topic", cloud_topic, "/velodyne_points");
+        nh.param<double>("min_range", min_range, 1.0);
+        nh.param<double>("max_range", max_range, 100.0);
+        nh.param<double>("scan_period", scan_period, 0.1);
+        nh.param<int>("LINES", LINES, 16);
+        nh.param<int>("N_SCAN", N_SCAN, 1800);
+        nh.param<double>("angle_gap", angle_gap, 2.0);
+        nh.param<double>("angle_x", angle_x, 0.2);
+        nh.param<double>("diff_threshold", diff_threshold, 0.1);
+        nh.param<bool>("PUB_EACH_LINE", PUB_EACH_LINE, true);
+        nh.param<int>("sharp_count_threshold", sharp_count_threshold, 3);
+        nh.param<int>("less_sharp_count_threshold", less_sharp_count_threshold, 20);
+        nh.param<int>("surf_count_threshold", surf_count_threshold, 5);
 
         each_line_pub.resize(LINES);
         scan_start_indices.resize(LINES);
@@ -489,8 +489,8 @@ public:
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "iScanRegestration");
-
-    iScanRegistration iSR;
+    ros::NodeHandle inh;
+    iScanRegistration iSR(inh);
 
     return 0;
 }

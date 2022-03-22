@@ -1,7 +1,5 @@
 <launch>
-
-    <node pkg="iloam" type="iScanRegistration" name="iScanRegistration" output="screen">
-        <rosparam file="$(find iloam)/config/iloam.yaml" command="load"/>
-    </node>
-
+    <rosparam file="$(find iloam)/config/iloam.yaml" command="load"/>
+    <node pkg="iloam" type="iScanRegistration" name="iScanRegistration" output="screen" />
+        
 </launch>
