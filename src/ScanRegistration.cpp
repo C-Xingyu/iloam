@@ -4,14 +4,9 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-17 21:17:17
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-03-20 20:36:58
+ * @LastEditTime: 2022-03-25 16:35:00
  */
 #include "../include/utility.h"
-#include <ros/ros.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/filter.h>
 #include <Eigen/Eigen>
@@ -19,15 +14,14 @@
 #include <algorithm>
 #include <cmath>
 #include <dynamic_reconfigure/server.h>
-#include "../../../devel/include/i-LOAM/ScanRegConfig.h"
-using PointType = pcl::PointXYZI;
+#include <string>
+#include "../../../devel/include/iloam/ScanRegConfig.h"
 
-using PointCloud = pcl::PointCloud<PointType>;
-
-class iScanRegistration
+class iScanRegistration : public BaseModule
 {
 public:
     ros::NodeHandle nh;
+    int frame_count;
     ros::Subscriber sensor_cloud_sub;
     ros::Publisher sorted_cloud_pub;
 
@@ -50,13 +44,13 @@ public:
     std::vector<int> scan_start_indices;
     std::vector<int> scan_end_indices;
     std::vector<PointCloud> scan_cloud;
-    std::vector<smoothness> cloud_smoothness;
 
+    std::string cloud_topic;
     double min_range;
     double max_range;
     double scan_period;
-    int LINES;
-    int N_SCAN;
+    // int LINES;
+    // int N_SCAN;
     double angle_gap;
     double angle_x;
     double diff_threshold;
@@ -69,9 +63,11 @@ public:
     iScanRegistration() : original_cloud(new PointCloud()), filtered_cloud(new PointCloud()),
                           sorted_cloud(new PointCloud()), sharp_cloud(new PointCloud()),
                           surf_cloud(new PointCloud()), less_sharp_cloud(new PointCloud()),
-                          less_surf_cloud(new PointCloud())
+                          less_surf_cloud(new PointCloud()), frame_count(0)
 
     {
+        frame_count++;
+        ROS_INFO("Start! ");
         InitialParams();
         dynamic_reconfigure::Server<dynamic_cfg::ScanRegConfig> server;
         dynamic_reconfigure::Server<dynamic_cfg::ScanRegConfig>::CallbackType ff;
@@ -79,19 +75,19 @@ public:
         ff = boost::bind(&iScanRegistration::paraCallback, this, _1, _2);
         server.setCallback(ff);
 
-        sensor_cloud_sub = nh.subscribe("/rslidar_points_throttle", 1, &iScanRegistration::CloudHandler, this);
-        sorted_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/sorted_cloud", 1);
+        sensor_cloud_sub = nh.subscribe(cloud_topic, 1, &iScanRegistration::CloudHandler, this);
+        sorted_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/sorted_cloud", 10);
 
-        sharp_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/sharp_cloud", 1);
-        less_sharp_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/less_sharp_cloud", 1);
-        surf_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/surf_cloud", 1);
-        less_surf_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/less_surf_cloud", 1);
+        sharp_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/sharp_cloud", 10);
+        less_sharp_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/less_sharp_cloud", 10);
+        surf_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/surf_cloud", 10);
+        less_surf_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/less_surf_cloud", 10);
         each_line_pub.resize(LINES);
         if (PUB_EACH_LINE)
         {
             for (int i = 0; i < LINES; ++i)
             {
-                each_line_pub[i] = nh.advertise<sensor_msgs::PointCloud2>("/scan_" + std::to_string(i), 1);
+                each_line_pub[i] = nh.advertise<sensor_msgs::PointCloud2>("/scan_" + std::to_string(i), 10);
             }
         }
 
@@ -117,6 +113,8 @@ public:
 
     void InitialParams()
     {
+
+        nh.param<std::string>("cloud_topic", cloud_topic, "/velodyne_points");
         nh.param<double>("min_range", min_range, 1.0);
         nh.param<double>("max_range", max_range, 100.0);
         nh.param<double>("scan_period", scan_period, 0.1);
@@ -134,14 +132,16 @@ public:
         scan_start_indices.resize(LINES);
         scan_end_indices.resize(LINES);
         scan_cloud.resize(LINES);
-        cloud_smoothness.resize(LINES * N_SCAN);
+        // cloud_smoothness.resize(LINES * N_SCAN);
     }
 
     void CloudHandler(const sensor_msgs::PointCloud2Ptr &cloud_msg)
     {
-        // ROS_INFO("CloudHandler");
+        ROS_INFO("This is the %dst frame. ", frame_count);
+
         header = cloud_msg->header;
-        Concert2PCLCloud(cloud_msg);
+
+        original_cloud = Concert2PCLCloud(cloud_msg);
         RemoveSomePoints();
         SortCloud();
         ExtractFeatures();
@@ -149,13 +149,14 @@ public:
         AllocateMemory();
     }
 
-    void Concert2PCLCloud(const sensor_msgs::PointCloud2Ptr &cloud_msg)
+    static PointCloud::Ptr Concert2PCLCloud(const sensor_msgs::PointCloud2Ptr &cloud_msg)
     {
-        // ROS_INFO("Concert2PCLCloud");
-        pcl::fromROSMsg(*cloud_msg, *original_cloud);
+        PointCloud::Ptr cloud(new PointCloud());
+        pcl::fromROSMsg(*cloud_msg, *cloud);
+        return cloud;
     }
 
-    sensor_msgs::PointCloud2 Convert2SensorMsg(PointCloud &in_cloud)
+    static sensor_msgs::PointCloud2 Convert2SensorMsg(PointCloud &in_cloud)
     {
         sensor_msgs::PointCloud2 out_msg;
         pcl::toROSMsg(in_cloud, out_msg);
@@ -226,12 +227,13 @@ public:
 
     void ExtractFeatures()
     {
-        // ROS_INFO("Extract Features");
-        int cloud_label[LINES * N_SCAN];
+
         int cloud_size = sorted_cloud->size();
-        // std::cout << "cloudsize: " << cloud_size << std::endl;
-        int is_sorted[LINES * N_SCAN];
-        // ROS_INFO("Before sorting ");
+
+        std::vector<int> cloud_label(cloud_size, 0);
+        std::vector<int> is_sorted(cloud_size, 0);
+        std::vector<smoothness> cloud_smoothness;
+        cloud_smoothness.resize(cloud_size);
 
         for (int i = 5; i < cloud_size - 5; ++i)
         {
@@ -277,6 +279,10 @@ public:
             {
                 int start_index = scan_start_indices[i] + (scan_end_indices[i] - scan_start_indices[i]) * j / 6;
                 int end_index = scan_start_indices[i] + (scan_end_indices[i] - scan_start_indices[i]) * (j + 1) / 6 - 1;
+#ifdef DEBUG
+                ROS_INFO("start_index: %d ", start_index);
+                ROS_INFO("end_index: %d ", end_index);
+#endif
                 if (start_index >= end_index)
                     continue;
                 std::sort(cloud_smoothness.begin() + start_index, cloud_smoothness.begin() + end_index + 1, by_value()); //升序排列
@@ -291,30 +297,34 @@ public:
                     if (cloud_smoothness[ind].value > diff_threshold && is_sorted[ind] == 0)
                     {
 
-                        if (pick_edge_count < sharp_count_threshold)
+                        if (pick_edge_count <= sharp_count_threshold)
                         {
                             cloud_label[ind] = 2;
 
                             sharp_cloud->points.push_back(sorted_cloud->points[ind]);
 
                             less_sharp_cloud->points.push_back(sorted_cloud->points[ind]);
+
+                            // sharp_cloud_tmp.points.push_back(sorted_cloud->points[ind]);
+
+                            // less_sharp_cloud_tmp.points.push_back(sorted_cloud->points[ind]);
                         }
-                        else if (pick_edge_count < less_sharp_count_threshold)
+                        else if (pick_edge_count <= less_sharp_count_threshold)
                         {
 
                             cloud_label[ind] = 1;
                             less_sharp_cloud->points.push_back(sorted_cloud->points[ind]);
+                            // less_sharp_cloud_tmp.points.push_back(sorted_cloud->points[ind]);
                         }
                         else
                         {
-
                             break;
                         }
 
                         is_sorted[ind] = 1;
                         pick_edge_count++;
 
-                        for (int l = -5; l < 5 && l != 0; ++l)
+                        for (int l = -5; l < 5; ++l)
                         {
                             double diff_x = sorted_cloud->points[ind + l].x - sorted_cloud->points[ind + l + 1].x;
                             double diff_y = sorted_cloud->points[ind + l].y - sorted_cloud->points[ind + l + 1].y;
@@ -335,10 +345,11 @@ public:
                     int ind = cloud_smoothness[k].id;
                     if (cloud_smoothness[ind].value < diff_threshold && is_sorted[ind] == 0)
                     {
-                        if (pick_surf_count < surf_count_threshold)
+                        if (pick_surf_count <= surf_count_threshold)
                         {
                             cloud_label[ind] = -1;
                             surf_cloud->points.push_back(sorted_cloud->points[ind]);
+                            // surf_cloud_tmp.points.push_back(sorted_cloud->points[ind]);
                         }
                         else
                         {
@@ -365,8 +376,9 @@ public:
 
                 for (int k = start_index; k <= end_index; ++k)
                 {
-                    if (cloud_label[k] <= 0)
-                        less_scan_surf_cloud->points.push_back(sorted_cloud->points[k]);
+                    int ind = cloud_smoothness[k].id;
+                    if (cloud_label[ind] <= 0)
+                        less_scan_surf_cloud->points.push_back(sorted_cloud->points[ind]);
                 }
             }
             PointCloud::Ptr tmp_less_surf_cloud(new PointCloud());
@@ -375,6 +387,10 @@ public:
             voxel_filter.setLeafSize(0.2, 0.2, 0.2);
             voxel_filter.filter(*tmp_less_surf_cloud);
             *less_surf_cloud += *tmp_less_surf_cloud;
+
+            // *sharp_cloud = sharp_cloud_tmp;
+            // *less_sharp_cloud = less_sharp_cloud_tmp;
+            // *surf_cloud = surf_cloud_tmp;
         }
     }
 
@@ -397,8 +413,6 @@ public:
             scan_cloud[i].clear();
         }
         scan_cloud.resize(LINES);
-
-        cloud_smoothness.resize(LINES * N_SCAN);
     }
 
     void PublishCloud()
@@ -411,21 +425,25 @@ public:
 
         sensor_msgs::PointCloud2 tmp_sharp_cloud;
         tmp_sharp_cloud = Convert2SensorMsg(*sharp_cloud);
+        ROS_INFO("sharp_cloud size:  %d", sharp_cloud->size());
         tmp_sharp_cloud.header = header;
         sharp_cloud_pub.publish(tmp_sharp_cloud);
 
         sensor_msgs::PointCloud2 tmp_less_sharp_cloud;
         tmp_less_sharp_cloud = Convert2SensorMsg(*less_sharp_cloud);
+        ROS_INFO("less_sharp_cloud size:  %d", less_sharp_cloud->size());
         tmp_less_sharp_cloud.header = header;
         less_sharp_cloud_pub.publish(tmp_less_sharp_cloud);
 
         sensor_msgs::PointCloud2 tmp_surf_cloud;
         tmp_surf_cloud = Convert2SensorMsg(*surf_cloud);
+        ROS_INFO("surf_cloud size:  %d", surf_cloud->size());
         tmp_surf_cloud.header = header;
         surf_cloud_pub.publish(tmp_surf_cloud);
 
         sensor_msgs::PointCloud2 tmp_less_surf_cloud;
         tmp_less_surf_cloud = Convert2SensorMsg(*less_surf_cloud);
+        ROS_INFO("less_surf_cloud size:  %d", less_surf_cloud->size());
         tmp_less_surf_cloud.header = header;
         less_surf_cloud_pub.publish(tmp_less_surf_cloud);
 

@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>i-LOAM</name>
+  <name>iloam</name>
   <version>0.0.0</version>
-  <description>The i-LOAM package</description>
+  <description>The iloam package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->

@@ -1,7 +1,6 @@
 <launch>
-
-    <node pkg="i-LOAM" type="iScanRegistration" name="iScanRegistration" >
-        <rosparam file="$(find i-LOAM)/config/i-LOAM-rslidar.yaml" command="load"/>
+    <rosparam file="$(find iloam)/config/iloam.yaml" command="load"/>
+    <node pkg="iloam" type="iScanRegistration" name="iScanRegistration" output="screen">       
     </node>
 
 </launch>

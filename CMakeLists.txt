@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(i-LOAM)
-
+project(iloam)
+##SET(CMAKE_BUILD_TYPE Debug)
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
@@ -109,7 +109,7 @@ find_package(catkin REQUIRED COMPONENTS)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
- LIBRARIES i-LOAM custom_dynamic_reconfigure
+ LIBRARIES iloam custom_dynamic_reconfigure
   CATKIN_DEPENDS geometry_msgs nav_msgs sensor_msgs std_msgs tf dynamic_reconfigure 
   DEPENDS PCL EIGEN3
 )
