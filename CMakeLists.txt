@@ -20,7 +20,7 @@ generate_dynamic_reconfigure_options(config/ScanReg.cfg )
 ##find_package(YAML-CPP REQUIRED )
 find_package(PCL REQUIRED)
 find_package(catkin REQUIRED COMPONENTS)
-
+find_package(Ceres REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -125,6 +125,7 @@ include_directories(
   include
 	${catkin_INCLUDE_DIRS} 
 	${PCL_INCLUDE_DIRS}
+  ${CERES_INCLUDE_DIRS}
   )
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
@@ -144,6 +145,10 @@ add_executable(iScanRegistration src/ScanRegistration.cpp)
 add_dependencies(iScanRegistration ${PROJECT_NAME}_gencfg)
 target_link_libraries(iScanRegistration ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
+
+add_executable(iLaserOdometry src/LaserOdometry.cpp)
+add_dependencies(iLaserOdometry ${PROJECT_NAME}_gencfg)
+target_link_libraries(iLaserOdometry ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
 
 
 ## Rename C++ executable without prefix

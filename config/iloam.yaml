@@ -1,3 +1,4 @@
+#ScanRegistration
 cloud_topic: "/rslidar_points"
 min_range: 1.0
 max_range: 100.0
@@ -11,3 +12,9 @@ PUB_EACH_LINE: true
 sharp_count_threshold: 2
 less_sharp_count_threshold: 20
 surf_count_threshold: 4
+
+#LaserOdometry
+NearestThreshold: 25
+NEAR_SCAN_NUM: 3
+ITER_NUM: 3
+minCorrespondence: 20

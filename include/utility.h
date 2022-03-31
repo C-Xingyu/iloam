@@ -4,7 +4,7 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-17 21:48:17
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-03-25 16:36:05
+ * @LastEditTime: 2022-03-31 17:32:33
  */
 
 #pragma once
@@ -45,12 +45,12 @@ public:
         PointCloud::Ptr cloud(new PointCloud());
         pcl::fromROSMsg(*cloud_msg, *cloud);
         return cloud;
-    }
+    };
 
     sensor_msgs::PointCloud2 Convert2SensorMsg(PointCloud &in_cloud)
     {
         sensor_msgs::PointCloud2 out_msg;
         pcl::toROSMsg(in_cloud, out_msg);
         return out_msg;
-    }
+    };
 };
