@@ -4,7 +4,7 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-25 16:20:47
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-03-31 17:37:53
+ * @LastEditTime: 2022-04-01 16:31:21
  */
 #pragma once
 #include "../include/utility.h"
@@ -28,11 +28,11 @@ struct LidarEdegFactor
         Eigen::Matrix<T, 3, 1> closeP1{T(closestPoint1_.x()), T(closestPoint1_.y()), T(closestPoint1_.z())};
         Eigen::Matrix<T, 3, 1> closeP2{T(closestPoint2_.x()), T(closestPoint2_.y()), T(closestPoint2_.z())};
 
-        Eigen::Quaternion<T> Q_last_curr{T(q[3]), T(q[0]), T(q[1]), T(q[2])};
+        Eigen::Quaternion<T> Q_last_curr{q[3], q[0], q[1], q[2]};
         Eigen::Quaternion<T> Q_Identity{T(1), T(0), T(0), T(0)};
 
         Eigen::Quaternion<T> Q_last_point = Q_Identity.slerp(T(ratio_), Q_last_curr);
-        Eigen::Matrix<T, 3, 1> T_last_curr{T(t[0]) * T(ratio_), T(t[1]) * T(ratio_), T(t[2]) * T(ratio_)};
+        Eigen::Matrix<T, 3, 1> T_last_curr{t[0] * T(ratio_), t[1] * T(ratio_), t[2] * T(ratio_)};
 
         Eigen::Matrix<T, 3, 1> lastP = Q_last_point * currP + T_last_curr;
 
@@ -78,16 +78,16 @@ struct LidarSurfFactor
     {
         Eigen::Matrix<T, 3, 1> currP{T(currPoint_.x()), T(currPoint_.y()), T(currPoint_.z())};
 
-        Eigen::Quaternion<T> Q_last_curr{T(q[3]), T(q[0]), T(q[1]), T(q[2])};
+        Eigen::Quaternion<T> Q_last_curr{q[3], q[0], q[1], q[2]};
         Eigen::Quaternion<T> Q_Identity{T(1), T(0), T(0), T(0)};
 
         Eigen::Quaternion<T> Q_last_point = Q_Identity.slerp(T(ratio_), Q_last_curr);
-        Eigen::Matrix<T, 3, 1> T_last_curr{T(t[0]) * T(ratio_), T(t[1]) * T(ratio_), T(t[2]) * T(ratio_)};
+        Eigen::Matrix<T, 3, 1> T_last_curr{t[0] * T(ratio_), t[1] * T(ratio_), t[2] * T(ratio_)};
 
         Eigen::Matrix<T, 3, 1> lastP = Q_last_point * currP + T_last_curr;
-        Eigen::Matrix<T, 3, 1> closestP{T(closestPoint_.x()), T(closestPoint_.y()), T(closestPoint_.z())};
+        Eigen::Matrix<T, 3, 1> closeP1{T(closePoint1_.x()), T(closePoint1_.y()), T(closePoint1_.z())};
         Eigen::Matrix<T, 3, 1> norm{T(norm_.x()), T(norm_.y()), T(norm_.z())};
-        residual[0] = (lastP - closestP).dot(norm);
+        residual[0] = (lastP - closeP1).dot(norm);
         return true;
     };
 

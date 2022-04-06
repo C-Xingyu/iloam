@@ -4,11 +4,11 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-17 21:17:17
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-03-25 16:35:00
+ * @LastEditTime: 2022-04-06 14:39:50
  */
+//#pragma GCC optimize(3)
 #include "../include/utility.h"
 #include <pcl/filters/voxel_grid.h>
-#include <pcl/filters/filter.h>
 #include <Eigen/Eigen>
 #include <vector>
 #include <algorithm>
@@ -43,7 +43,7 @@ public:
 
     std::vector<int> scan_start_indices;
     std::vector<int> scan_end_indices;
-    std::vector<PointCloud> scan_cloud;
+    std::vector<PointCloud::Ptr> scan_cloud;
 
     std::string cloud_topic;
     double min_range;
@@ -66,7 +66,7 @@ public:
                           less_surf_cloud(new PointCloud()), frame_count(0)
 
     {
-        frame_count++;
+
         ROS_INFO("Start! ");
         InitialParams();
         dynamic_reconfigure::Server<dynamic_cfg::ScanRegConfig> server;
@@ -75,25 +75,23 @@ public:
         ff = boost::bind(&iScanRegistration::paraCallback, this, _1, _2);
         server.setCallback(ff);
 
-        sensor_cloud_sub = nh.subscribe(cloud_topic, 1, &iScanRegistration::CloudHandler, this);
-        sorted_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/sorted_cloud", 10);
+        sensor_cloud_sub = nh.subscribe(cloud_topic, 100, &iScanRegistration::CloudHandler, this);
+        sorted_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/sorted_cloud", 100);
 
-        sharp_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/sharp_cloud", 10);
-        less_sharp_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/less_sharp_cloud", 10);
-        surf_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/surf_cloud", 10);
-        less_surf_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/less_surf_cloud", 10);
+        sharp_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/sharp_cloud", 100);
+        less_sharp_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/less_sharp_cloud", 100);
+        surf_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/surf_cloud", 100);
+        less_surf_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/less_surf_cloud", 100);
         each_line_pub.resize(LINES);
         if (PUB_EACH_LINE)
         {
             for (int i = 0; i < LINES; ++i)
             {
-                each_line_pub[i] = nh.advertise<sensor_msgs::PointCloud2>("/scan_" + std::to_string(i), 10);
+                each_line_pub[i] = nh.advertise<sensor_msgs::PointCloud2>("/scan_" + std::to_string(i), 100);
             }
         }
 
         ros::spin();
-
-        // FreeMemory();
     }
 
     void paraCallback(dynamic_cfg::ScanRegConfig &config, uint32_t level)
@@ -124,50 +122,45 @@ public:
         nh.param<double>("angle_x", angle_x, 0.2);
         nh.param<double>("diff_threshold", diff_threshold, 0.1);
         nh.param<bool>("PUB_EACH_LINE", PUB_EACH_LINE, true);
-        nh.param<int>("sharp_count_threshold", sharp_count_threshold, 3);
+        nh.param<int>("sharp_count_threshold", sharp_count_threshold, 2);
         nh.param<int>("less_sharp_count_threshold", less_sharp_count_threshold, 20);
-        nh.param<int>("surf_count_threshold", surf_count_threshold, 5);
-
+        nh.param<int>("surf_count_threshold", surf_count_threshold, 4);
         each_line_pub.resize(LINES);
         scan_start_indices.resize(LINES);
         scan_end_indices.resize(LINES);
         scan_cloud.resize(LINES);
-        // cloud_smoothness.resize(LINES * N_SCAN);
+        for (int i = 0; i < LINES; i++)
+        {
+            PointCloud::Ptr scan(new PointCloud());
+            scan_cloud[i] = scan;
+        }
     }
 
     void CloudHandler(const sensor_msgs::PointCloud2Ptr &cloud_msg)
     {
+        auto start = std::chrono::system_clock::now();
+
         ROS_INFO("This is the %dst frame. ", frame_count);
 
         header = cloud_msg->header;
 
         original_cloud = Concert2PCLCloud(cloud_msg);
         RemoveSomePoints();
+
         SortCloud();
+
         ExtractFeatures();
         PublishCloud();
         AllocateMemory();
-    }
-
-    static PointCloud::Ptr Concert2PCLCloud(const sensor_msgs::PointCloud2Ptr &cloud_msg)
-    {
-        PointCloud::Ptr cloud(new PointCloud());
-        pcl::fromROSMsg(*cloud_msg, *cloud);
-        return cloud;
-    }
-
-    static sensor_msgs::PointCloud2 Convert2SensorMsg(PointCloud &in_cloud)
-    {
-        sensor_msgs::PointCloud2 out_msg;
-        pcl::toROSMsg(in_cloud, out_msg);
-        return out_msg;
+        auto end = std::chrono::system_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        ROS_INFO("Time of iScanRegistration : %ld ms", duration.count());
     }
 
     void RemoveSomePoints()
     {
-        // ROS_INFO("Remove some points");
-        std::vector<int> indices;
-        pcl::removeNaNFromPointCloud(*original_cloud, *original_cloud, indices);
+
+        RemoveNaNPoints(original_cloud);
         for (int i = 0; i < original_cloud->points.size(); ++i)
         {
             double range = sqrt(original_cloud->points[i].x * original_cloud->points[i].x +
@@ -179,16 +172,13 @@ public:
 
     void SortCloud()
     {
-        // std::vector<PointCloud> scan_cloud(LINES);
-        //  scan_start_indices.resize(LINES);
-        //  scan_end_indices.resize(LINES);
-        // ROS_INFO("Sort Cloud");
+
         for (auto &point : filtered_cloud->points)
         {
             double range_xy = sqrt(point.x * point.x +
                                    point.y * point.y);
 
-            double theta = std::atan2(abs(point.z), range_xy) * 180 / M_PI;
+            double theta = std::atan2(abs(point.z), range_xy) * 180.0 / M_PI;
             int row_index, column_index;
             if (point.z < 0)
                 row_index = 7 - int(theta / angle_gap);
@@ -198,7 +188,7 @@ public:
             if (row_index < 0 || row_index >= LINES)
                 continue;
 
-            double horizonAngle = atan2(point.x, point.y) * 180 / M_PI;
+            double horizonAngle = atan2(point.x, point.y) * 180.0 / M_PI;
 
             column_index = -round((horizonAngle - 90.0) / angle_x) + N_SCAN / 2;
             if (column_index >= N_SCAN)
@@ -206,21 +196,17 @@ public:
 
             if (column_index < 0 || column_index >= N_SCAN)
                 continue;
-
-            point.intensity = 100 * column_index + row_index + point.intensity;
-
-            // int index = LINES * row_index + column_index;
-            // sorted_cloud->points[index] = point;
-            scan_cloud[row_index].push_back(point);
+            point.intensity = float(column_index * 100.0 + row_index * 1.0) + point.intensity / 101.0;
+            // ROS_INFO("point.intensity:  %f ", point.intensity);
+            scan_cloud[row_index]->push_back(point);
         }
 
-        int count = 0;
-        for (int i = 0; i < LINES; ++i)
+        for (int i = 0, count = 0; i < LINES; ++i)
         {
             scan_start_indices[i] = count + 5;
-            count += scan_cloud[i].size();
+            count += scan_cloud[i]->size();
             scan_end_indices[i] = count - 6;
-            *sorted_cloud += scan_cloud[i];
+            *sorted_cloud += *scan_cloud[i];
             // std::cout << "cloudsize: " << sorted_cloud->size() << std::endl;
         }
     }
@@ -257,14 +243,8 @@ public:
                             sorted_cloud->points[i + 4].z + sorted_cloud->points[i + 5].z -
                             10 * sorted_cloud->points[i].z;
 
-            // std::cout << "i : " << i << std::endl;
-            // std::cout << "cloudsize: " << cloud_size << std::endl;
-            //  std::cout << "original cloud : " << original_cloud->points.size() << std::endl;
-            //  std::cout << "diff_x: " << diff_x << std::endl;
-            //  std::cout << "diff_y: " << diff_y << std::endl;
-            //  std::cout << "diff_z: " << diff_z << std::endl;
             cloud_smoothness[i].value = diff_x * diff_x + diff_y * diff_y + diff_z * diff_z;
-            // std::cout << "value: " << cloud_smoothness[i].value << std::endl;
+
             cloud_smoothness[i].id = i;
         }
         // ROS_INFO("Sorted!");
@@ -387,10 +367,6 @@ public:
             voxel_filter.setLeafSize(0.2, 0.2, 0.2);
             voxel_filter.filter(*tmp_less_surf_cloud);
             *less_surf_cloud += *tmp_less_surf_cloud;
-
-            // *sharp_cloud = sharp_cloud_tmp;
-            // *less_sharp_cloud = less_sharp_cloud_tmp;
-            // *surf_cloud = surf_cloud_tmp;
         }
     }
 
@@ -410,39 +386,39 @@ public:
         scan_end_indices.resize(LINES);
         for (int i = 0; i < scan_cloud.size(); i++)
         {
-            scan_cloud[i].clear();
+            scan_cloud[i]->clear();
         }
-        scan_cloud.resize(LINES);
+        // scan_cloud.resize(LINES);
     }
 
     void PublishCloud()
     {
         // ROS_INFO("Publish Cloud");
         sensor_msgs::PointCloud2 tmp_sorted_cloud;
-        tmp_sorted_cloud = Convert2SensorMsg(*sorted_cloud);
+        tmp_sorted_cloud = Convert2SensorMsg(sorted_cloud);
         tmp_sorted_cloud.header = header;
         sorted_cloud_pub.publish(tmp_sorted_cloud);
 
         sensor_msgs::PointCloud2 tmp_sharp_cloud;
-        tmp_sharp_cloud = Convert2SensorMsg(*sharp_cloud);
+        tmp_sharp_cloud = Convert2SensorMsg(sharp_cloud);
         ROS_INFO("sharp_cloud size:  %d", sharp_cloud->size());
         tmp_sharp_cloud.header = header;
         sharp_cloud_pub.publish(tmp_sharp_cloud);
 
         sensor_msgs::PointCloud2 tmp_less_sharp_cloud;
-        tmp_less_sharp_cloud = Convert2SensorMsg(*less_sharp_cloud);
+        tmp_less_sharp_cloud = Convert2SensorMsg(less_sharp_cloud);
         ROS_INFO("less_sharp_cloud size:  %d", less_sharp_cloud->size());
         tmp_less_sharp_cloud.header = header;
         less_sharp_cloud_pub.publish(tmp_less_sharp_cloud);
 
         sensor_msgs::PointCloud2 tmp_surf_cloud;
-        tmp_surf_cloud = Convert2SensorMsg(*surf_cloud);
+        tmp_surf_cloud = Convert2SensorMsg(surf_cloud);
         ROS_INFO("surf_cloud size:  %d", surf_cloud->size());
         tmp_surf_cloud.header = header;
         surf_cloud_pub.publish(tmp_surf_cloud);
 
         sensor_msgs::PointCloud2 tmp_less_surf_cloud;
-        tmp_less_surf_cloud = Convert2SensorMsg(*less_surf_cloud);
+        tmp_less_surf_cloud = Convert2SensorMsg(less_surf_cloud);
         ROS_INFO("less_surf_cloud size:  %d", less_surf_cloud->size());
         tmp_less_surf_cloud.header = header;
         less_surf_cloud_pub.publish(tmp_less_surf_cloud);
