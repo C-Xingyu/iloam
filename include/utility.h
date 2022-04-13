@@ -4,7 +4,7 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-17 21:48:17
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-04-05 11:26:56
+ * @LastEditTime: 2022-04-08 16:45:23
  */
 
 #pragma once
@@ -51,13 +51,13 @@ class BaseModule
 public:
     int N_SCAN = 1800;
     int LINES = 16;
-    double angle_gap = 2;
+    double angle_gap = 2.0;
     double angle_x = 0.2;
 
     BaseModule() = default;
     virtual ~BaseModule() = default;
 
-    PointCloud::Ptr Concert2PCLCloud(const sensor_msgs::PointCloud2Ptr &cloud_msg)
+    PointCloud::Ptr Concert2PCLCloud(const sensor_msgs::PointCloud2ConstPtr &cloud_msg)
     {
         PointCloud::Ptr cloud(new PointCloud());
         pcl::fromROSMsg(*cloud_msg, *cloud);

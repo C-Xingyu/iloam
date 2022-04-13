@@ -4,17 +4,18 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-24 20:25:44
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-04-06 14:47:10
+ * @LastEditTime: 2022-04-08 22:34:35
  */
 
 #pragma once
-//#pragma GCC optimize(3)
+#pragma GCC optimize(3)
 #include "../include/utility.h"
 #include <queue>
 #include <mutex>
 #include <thread>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
 #include <Eigen/Dense>
 #include "LiDARfactor.hpp"
 
@@ -30,12 +31,13 @@ private:
     ros::Subscriber lessSurfCloudSub;
 
     ros::Publisher odometryPub;
+    ros::Publisher odomPathPub;
 
-    std::queue<sensor_msgs::PointCloud2::Ptr> fullCloudBuf;
-    std::queue<sensor_msgs::PointCloud2::Ptr> sharpCloudBuf;
-    std::queue<sensor_msgs::PointCloud2::Ptr> lessSharpCloudBuf;
-    std::queue<sensor_msgs::PointCloud2::Ptr> surfCloudBuf;
-    std::queue<sensor_msgs::PointCloud2::Ptr> lessSurfCloudBuf;
+    std::queue<sensor_msgs::PointCloud2::ConstPtr> fullCloudBuf;
+    std::queue<sensor_msgs::PointCloud2::ConstPtr> sharpCloudBuf;
+    std::queue<sensor_msgs::PointCloud2::ConstPtr> lessSharpCloudBuf;
+    std::queue<sensor_msgs::PointCloud2::ConstPtr> surfCloudBuf;
+    std::queue<sensor_msgs::PointCloud2::ConstPtr> lessSurfCloudBuf;
     std::mutex bufMutex;
 
     PointCloud::Ptr fullCloud;
@@ -58,8 +60,8 @@ private:
 
     PointCloud::Ptr lastSharpPointCloud;
     PointCloud::Ptr lastSurfPointCloud;
-    PointCloud::Ptr lastLessSharpPointCloud;
-    PointCloud::Ptr lastLessSurfPointCloud;
+    // PointCloud::Ptr lastLessSharpPointCloud;
+    // PointCloud::Ptr lastLessSurfPointCloud;
 
     double NearestThreshold;
     int NEAR_SCAN_NUM;
@@ -84,6 +86,7 @@ public:
         surfCloudSub = inh.subscribe("/surf_cloud", 100, &iLaserOdometry::SurfCloudHandler, this);
         lessSurfCloudSub = inh.subscribe("/less_surf_cloud", 100, &iLaserOdometry::LessSurfCloudHandler, this);
         odometryPub = inh.advertise<nav_msgs::Odometry>("/odom", 100);
+        odomPathPub = inh.advertise<nav_msgs::Path>("/odom_path", 100);
         ros::Rate rate(100);
 
         while (ros::ok())
@@ -109,20 +112,20 @@ public:
         }
     }
 
-    void FullCloudHandler(const sensor_msgs::PointCloud2::Ptr &fullCloud)
+    void FullCloudHandler(const sensor_msgs::PointCloud2::ConstPtr &fullCloud)
     {
         bufMutex.lock();
         fullCloudBuf.push(fullCloud);
         bufMutex.unlock();
     }
-    void SharpCloudHandler(const sensor_msgs::PointCloud2::Ptr &sharpCloud)
+    void SharpCloudHandler(const sensor_msgs::PointCloud2::ConstPtr &sharpCloud)
     {
 
         bufMutex.lock();
         sharpCloudBuf.push(sharpCloud);
         bufMutex.unlock();
     }
-    void LessSharpCloudHandler(const sensor_msgs::PointCloud2::Ptr &lessSharpCloud)
+    void LessSharpCloudHandler(const sensor_msgs::PointCloud2::ConstPtr &lessSharpCloud)
     {
 
         bufMutex.lock();
@@ -130,7 +133,7 @@ public:
         bufMutex.unlock();
     }
 
-    void SurfCloudHandler(const sensor_msgs::PointCloud2::Ptr &surfCloud)
+    void SurfCloudHandler(const sensor_msgs::PointCloud2::ConstPtr &surfCloud)
     {
 
         bufMutex.lock();
@@ -138,7 +141,7 @@ public:
         bufMutex.unlock();
     }
 
-    void LessSurfCloudHandler(const sensor_msgs::PointCloud2::Ptr &lessSurfCloud)
+    void LessSurfCloudHandler(const sensor_msgs::PointCloud2::ConstPtr &lessSurfCloud)
     {
 
         bufMutex.lock();
@@ -187,16 +190,22 @@ public:
         fullCloud->clear();
 
         bufMutex.lock();
+
         sharpCloud = Concert2PCLCloud(sharpCloudBuf.front());
         sharpCloudBuf.pop();
+
         lessSharpCloud = Concert2PCLCloud(lessSharpCloudBuf.front());
         lessSharpCloudBuf.pop();
+
         surfCloud = Concert2PCLCloud(surfCloudBuf.front());
         surfCloudBuf.pop();
+
         lessSurfCloud = Concert2PCLCloud(lessSurfCloudBuf.front());
         lessSurfCloudBuf.pop();
+
         fullCloud = Concert2PCLCloud(fullCloudBuf.front());
         fullCloudBuf.pop();
+
         bufMutex.unlock();
 
         if (!init)
@@ -210,19 +219,35 @@ public:
         }
         PublishTopics();
 
-        lastLessSharpPointCloud = lessSharpCloud;
-        lastLessSurfPointCloud = lessSurfCloud;
-        lastSharpPointCloud = lastLessSharpPointCloud;
-        lastSurfPointCloud = lastLessSurfPointCloud;
+        // lastLessSharpPointCloud = lessSharpCloud;
+        // lastLessSurfPointCloud = lessSurfCloud;
+        // printf("lessSharpCloud->size(): %d \n", lessSharpCloud->size());
+        // *lastSharpPointCloud = *lessSharpCloud;
+        // *lastSurfPointCloud = *lessSurfCloud;
+
+        PointCloud::Ptr tmp_cloud = lessSharpCloud;
+        lessSharpCloud = lastSharpPointCloud;
+        lastSharpPointCloud = tmp_cloud;
+
+        tmp_cloud = lessSurfCloud;
+        lessSurfCloud = lastSurfPointCloud;
+        lastSurfPointCloud = tmp_cloud;
+
+        // printf("lastSharpPointCloud->size(): %d \n", lastSharpPointCloud->size());
         lastSharpCloudTree->setInputCloud(lastSharpPointCloud);
         lastSurfCloudTree->setInputCloud(lastSurfPointCloud);
     }
 
     void SetOdometry()
     {
+        // printf("SetOdometry\n");
+        //  RemoveNaNPoints(sharpCloud);
+        //  RemoveNaNPoints(surfCloud);
 
-        RemoveNaNPoints(sharpCloud);
-        RemoveNaNPoints(surfCloud);
+        int lastSharpCloudNum = lastSharpPointCloud->size();
+        int lastSurfCloudNum = lastSurfPointCloud->size();
+
+        // printf("lastSharpCloudNum: %d \n", lastSharpCloudNum);
 
         int sharpCloudNum = sharpCloud->size();
         int surfCloudNum = surfCloud->size();
@@ -252,11 +277,11 @@ public:
 
                 PointType currSharpPoint = sharpCloud->points[i];
                 PointType transedSharpPoint;
-
+                // printf("1\n");
                 Transform2Start(currSharpPoint, transedSharpPoint);
-
+                // printf("2\n");
                 lastSharpCloudTree->nearestKSearch(transedSharpPoint, 1, sharpPointsIndices, sharpPointsDist);
-
+                // printf("3\n");
                 if (sharpPointsDist[0] < NearestThreshold)
                 {
                     int closestPointIdx = sharpPointsIndices[0];
@@ -265,17 +290,17 @@ public:
                     double minDist2 = std::numeric_limits<double>::max();
 
                     int minDistPointIdx2;
-
-                    for (int j = closestPointIdx + 1; j < sharpCloudNum; j++)
+                    // printf("4\n");
+                    for (int j = closestPointIdx + 1; j < lastSharpCloudNum; j++)
                     {
-                        int thisLastSharpPointScanIdx = int(sharpCloud->points[j].intensity) % 100;
-
+                        int thisLastSharpPointScanIdx = int(lastSharpPointCloud->points[j].intensity) % 100;
+                        // printf("5\n");
                         if (thisLastSharpPointScanIdx <= lastSharpPointScanIdx)
                             continue;
                         if (thisLastSharpPointScanIdx > lastSharpPointScanIdx + NEAR_SCAN_NUM)
                             break;
                         PointType thisPoint = lastSharpPointCloud->points[j];
-
+                        // printf("6\n");
                         double dist = (closestPoint.x - thisPoint.x) * (closestPoint.x - thisPoint.x) +
                                       (closestPoint.y - thisPoint.y) * (closestPoint.y - thisPoint.y) +
                                       (closestPoint.z - thisPoint.z) * (closestPoint.z - thisPoint.z);
@@ -285,9 +310,10 @@ public:
                             minDistPointIdx2 = j;
                         }
                     }
+                    // printf("7\n");
                     for (int j = closestPointIdx - 1; j >= 0; j--)
                     {
-                        int thisLastSharpPointScanIdx = int(sharpCloud->points[j].intensity) % 100;
+                        int thisLastSharpPointScanIdx = int(lastSharpPointCloud->points[j].intensity) % 100;
                         if (thisLastSharpPointScanIdx >= lastSharpPointScanIdx)
                             continue;
                         if (thisLastSharpPointScanIdx < lastSharpPointScanIdx - NEAR_SCAN_NUM)
@@ -303,11 +329,17 @@ public:
                             minDistPointIdx2 = j;
                         }
                     }
-
-                    if (minDistPointIdx2 >= 0)
+                    // printf("8\n");
+                    if (minDistPointIdx2 >= 0 && minDistPointIdx2 < lastSharpCloudNum)
                     {
+                        // printf("9\n");
                         Eigen::Vector3d currP{sharpCloud->points[i].x, sharpCloud->points[i].y,
                                               sharpCloud->points[i].z};
+
+                        // printf("10\n");
+                        //  printf("closestPointIdx: %d\n", closestPointIdx);
+                        //  printf("minDistPointIdx2: %d\n", minDistPointIdx2);
+                        //  printf("lastSharpCloudNum: %d\n", lastSharpCloudNum);
                         Eigen::Vector3d closestP{lastSharpPointCloud->points[closestPointIdx].x,
                                                  lastSharpPointCloud->points[closestPointIdx].y,
                                                  lastSharpPointCloud->points[closestPointIdx].z};
@@ -315,30 +347,31 @@ public:
                                                   lastSharpPointCloud->points[minDistPointIdx2].y,
                                                   lastSharpPointCloud->points[minDistPointIdx2].z};
 
-                        // printf("sharp points: \n");
                         // printf("currP: %f %f %f \n", currP.x(), currP.y(), currP.z());
                         // printf("closestP: %f %f %f \n", closestP.x(), closestP.y(), closestP.z());
                         // printf("closestP2: %f %f %f \n", closestP2.x(), closestP2.y(), closestP2.z());
 
                         // printf("sharpCloud->points[i].intensity: %f \n", sharpCloud->points[i].intensity);
                         double ratio = (int(sharpCloud->points[i].intensity) / 100.0) / N_SCAN;
-                        // printf("ratio: %f \n", ratio);
+
                         ceres::CostFunction *cost_func = LidarEdegFactor::Create(currP, closestP, closestP2, ratio);
                         problem.AddResidualBlock(cost_func, loss_func, param_q, param_t);
                         sharpCorrespondence++;
                     }
                 }
             }
+            printf("sharpCorrespondence: %d\n", sharpCorrespondence);
             auto stop2 = std::chrono::system_clock::now();
             auto time12 = std::chrono::duration_cast<std::chrono::milliseconds>(stop2 - stop1);
             // printf("Time of sharp points opt: %ld ms\n", time12.count());
             for (int i = 0; i < surfCloudNum; ++i)
             {
+                // printf("11\n");
                 PointType currSurfPoint = surfCloud->points[i];
                 PointType transedSurfPoint;
                 Transform2Start(currSurfPoint, transedSurfPoint);
                 lastSurfCloudTree->nearestKSearch(transedSurfPoint, 1, surfPointsIndices, surfPointsDist);
-
+                // printf("12\n");
                 if (surfPointsDist[0] < NearestThreshold)
                 {
                     int closestPointIdx = surfPointsIndices[0];
@@ -347,44 +380,61 @@ public:
                     double minDist2 = std::numeric_limits<double>::max();
                     double minDist3 = std::numeric_limits<double>::max();
                     int minDistPointIdx2, minDistPointIdx3;
-
-                    for (int j = closestPointIdx + 1; j < surfCloudNum; ++j)
+                    // printf("13\n");
+                    for (int j = closestPointIdx + 1; j < lastSurfCloudNum; ++j)
                     {
-                        int thisLastSurfPointScanIdx = int(surfCloud->points[j].intensity) % 100;
-                        if (thisLastSurfPointScanIdx <= lastSurfPointScanIdx)
-                            continue;
+                        int thisLastSurfPointScanIdx = int(lastSurfPointCloud->points[j].intensity) % 100;
+                        // if (thisLastSurfPointScanIdx <= lastSurfPointScanIdx)
+                        //     continue;
                         if (thisLastSurfPointScanIdx > lastSurfPointScanIdx + NEAR_SCAN_NUM)
                             break;
                         PointType thisPoint = lastSurfPointCloud->points[j];
                         double dist = (closestPoint.x - thisPoint.x) * (closestPoint.x - thisPoint.x) +
                                       (closestPoint.y - thisPoint.y) * (closestPoint.y - thisPoint.y) +
                                       (closestPoint.z - thisPoint.z) * (closestPoint.z - thisPoint.z);
-                        if (dist < minDist2)
+                        if (dist < minDist2 && thisLastSurfPointScanIdx >= lastSurfPointScanIdx)
                         {
                             minDist2 = dist;
                             minDistPointIdx2 = j;
                         }
+                        if (dist < minDist3 && thisLastSurfPointScanIdx < lastSurfPointScanIdx)
+                        {
+                            minDist3 = dist;
+                            minDistPointIdx3 = j;
+                        }
                     }
+                    // printf("14\n");
                     for (int j = closestPointIdx - 1; j >= 0; --j)
                     {
-                        int thisLastSurfPointScanIdx = int(surfCloud->points[j].intensity) % 100;
-                        if (thisLastSurfPointScanIdx >= lastSurfPointScanIdx)
-                            continue;
+                        int thisLastSurfPointScanIdx = int(lastSurfPointCloud->points[j].intensity) % 100;
+                        // if (thisLastSurfPointScanIdx >= lastSurfPointScanIdx)
+                        //     continue;
                         if (thisLastSurfPointScanIdx < lastSurfPointScanIdx - NEAR_SCAN_NUM)
                             break;
                         PointType thisPoint = lastSurfPointCloud->points[j];
                         double dist = (closestPoint.x - thisPoint.x) * (closestPoint.x - thisPoint.x) +
                                       (closestPoint.y - thisPoint.y) * (closestPoint.y - thisPoint.y) +
                                       (closestPoint.z - thisPoint.z) * (closestPoint.z - thisPoint.z);
-                        if (dist < minDist3)
+
+                        if (dist < minDist2 && thisLastSurfPointScanIdx >= lastSurfPointScanIdx)
+                        {
+                            minDist2 = dist;
+                            minDistPointIdx2 = j;
+                        }
+                        if (dist < minDist3 && thisLastSurfPointScanIdx < lastSurfPointScanIdx)
                         {
                             minDist3 = dist;
                             minDistPointIdx3 = j;
                         }
                     }
 
-                    if (minDistPointIdx2 >= 0 && minDistPointIdx3 >= 0)
+                    if (minDistPointIdx2 >= 0 && minDistPointIdx3 >= 0 && minDistPointIdx2 < lastSurfCloudNum && minDistPointIdx3 < lastSurfCloudNum)
                     {
+                        // printf("closestPointIdx: %d \n", closestPointIdx);
+                        // printf("minDistPointIdx2: %d \n", minDistPointIdx2);
+                        // printf("minDistPointIdx3: %d \n", minDistPointIdx3);
+                        // printf("lastSurfCloudNum: %d \n", lastSurfCloudNum);
+
                         Eigen::Vector3d currP{surfCloud->points[i].x, surfCloud->points[i].y,
                                               surfCloud->points[i].z};
                         Eigen::Vector3d closestP{lastSurfPointCloud->points[closestPointIdx].x,
@@ -409,8 +459,8 @@ public:
 
             ceres::Solver::Options options;
             options.linear_solver_type = ceres::DENSE_QR;
-            options.max_num_iterations = 4;
-            options.minimizer_progress_to_stdout = false;
+            options.max_num_iterations = 10;
+            options.minimizer_progress_to_stdout = true;
             ceres::Solver::Summary summary;
             auto stop3 = std::chrono::system_clock::now();
             ceres::Solve(options, &problem, &summary);
@@ -446,9 +496,19 @@ public:
         odom->pose.pose.orientation.y = Q_world_curr.y();
         odom->pose.pose.orientation.z = Q_world_curr.z();
         odometryPub.publish(odom);
-        printf("T_last_curr: %lf %lf %lf \n", T_last_curr.x(), T_last_curr.y(), T_last_curr.z());
+        // printf("T_last_curr: %lf %lf %lf \n", T_last_curr.x(), T_last_curr.y(), T_last_curr.z());
         printf("Orientation: %lf  %lf  %lf  %lf \n", Q_world_curr.w(), Q_world_curr.x(), Q_world_curr.y(), Q_world_curr.z());
         printf("Translation: %lf  %lf  %lf\n", T_world_curr.x(), T_world_curr.y(), T_world_curr.z());
+
+        geometry_msgs::PoseStamped odomPose;
+        odomPose.header.frame_id = "odom";
+        odomPose.pose = odom->pose.pose;
+        odomPose.header.stamp = ros::Time().fromSec(timeFullCloud);
+        nav_msgs::Path odomPath;
+        odomPath.header = odomPose.header;
+        odomPath.header.frame_id = "odom";
+        odomPath.poses.push_back(odomPose);
+        odomPathPub.publish(odomPath);
     }
 
     void Transform2Start(const PointType &inPoint, PointType &outPoint)
@@ -475,10 +535,11 @@ public:
         surfCloud.reset(new PointCloud());
         lessSharpCloud.reset(new PointCloud());
         lessSurfCloud.reset(new PointCloud());
+
         lastSharpPointCloud.reset(new PointCloud());
         lastSurfPointCloud.reset(new PointCloud());
-        lastLessSharpPointCloud.reset(new PointCloud());
-        lastLessSurfPointCloud.reset(new PointCloud());
+        // lastLessSharpPointCloud.reset(new PointCloud());
+        // lastLessSurfPointCloud.reset(new PointCloud());
 
         lastSharpCloudTree.reset(new pcl::KdTreeFLANN<PointType>());
         lastSurfCloudTree.reset(new pcl::KdTreeFLANN<PointType>());
@@ -487,8 +548,8 @@ public:
         frame_count = 0;
         inh.param<int>("N_SCAN", N_SCAN, 1800);
         inh.param<double>("NearestThreshold", NearestThreshold, 25);
-        inh.param<int>("NEAR_SCAN_NUM", NEAR_SCAN_NUM, 3);
-        inh.param<int>("ITER_NUM", ITER_NUM, 3);
+        inh.param<int>("NEAR_SCAN_NUM", NEAR_SCAN_NUM, 2.5);
+        inh.param<int>("ITER_NUM", ITER_NUM, 2);
         inh.param<int>("minCorrespondence", minCorrespondence, 20);
 
         param_q[0] = 0.0;

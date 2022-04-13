@@ -4,9 +4,9 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-17 21:17:17
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-04-06 14:39:50
+ * @LastEditTime: 2022-04-08 22:30:48
  */
-//#pragma GCC optimize(3)
+#pragma GCC optimize(3)
 #include "../include/utility.h"
 #include <pcl/filters/voxel_grid.h>
 #include <Eigen/Eigen>
@@ -53,7 +53,8 @@ public:
     // int N_SCAN;
     double angle_gap;
     double angle_x;
-    double diff_threshold;
+    double diff_sharp_threshold;
+    double diff_surf_threshold;
     bool PUB_EACH_LINE;
     int sharp_count_threshold;
     int less_sharp_count_threshold;
@@ -96,13 +97,15 @@ public:
 
     void paraCallback(dynamic_cfg::ScanRegConfig &config, uint32_t level)
     {
-        ROS_INFO("Reconfigure Request: %lf %d %d %d %s",
-                 config.diff_threshold,
+        ROS_INFO("Reconfigure Request: %lf %lf %d %d %d %s",
+                 config.diff_sharp_threshold,
+                 config.diff_surf_threshold,
                  config.sharp_count_threshold,
                  config.less_sharp_count_threshold,
                  config.surf_count_threshold,
                  config.PUB_EACH_LINE ? "True" : "False");
-        diff_threshold = config.diff_threshold;
+        diff_sharp_threshold = config.diff_sharp_threshold;
+        diff_surf_threshold = config.diff_surf_threshold;
         sharp_count_threshold = config.sharp_count_threshold;
         less_sharp_count_threshold = config.less_sharp_count_threshold;
         surf_count_threshold = config.surf_count_threshold;
@@ -120,7 +123,8 @@ public:
         nh.param<int>("N_SCAN", N_SCAN, 1800);
         nh.param<double>("angle_gap", angle_gap, 2.0);
         nh.param<double>("angle_x", angle_x, 0.2);
-        nh.param<double>("diff_threshold", diff_threshold, 0.1);
+        nh.param<double>("diff_sharp_threshold", diff_sharp_threshold, 0.1);
+        nh.param<double>("diff_surf_threshold", diff_surf_threshold, 0.1);
         nh.param<bool>("PUB_EACH_LINE", PUB_EACH_LINE, true);
         nh.param<int>("sharp_count_threshold", sharp_count_threshold, 2);
         nh.param<int>("less_sharp_count_threshold", less_sharp_count_threshold, 20);
@@ -140,7 +144,7 @@ public:
     {
         auto start = std::chrono::system_clock::now();
 
-        ROS_INFO("This is the %dst frame. ", frame_count);
+        ROS_INFO("This is the %dst frame. ", ++frame_count);
 
         header = cloud_msg->header;
 
@@ -159,7 +163,6 @@ public:
 
     void RemoveSomePoints()
     {
-
         RemoveNaNPoints(original_cloud);
         for (int i = 0; i < original_cloud->points.size(); ++i)
         {
@@ -178,8 +181,9 @@ public:
             double range_xy = sqrt(point.x * point.x +
                                    point.y * point.y);
 
-            double theta = std::atan2(abs(point.z), range_xy) * 180.0 / M_PI;
+            double theta = std::atan2(std::abs(point.z), range_xy) * 180.0 / M_PI;
             int row_index, column_index;
+            // row_index = int((theta + 15) / 2 + 0.5);
             if (point.z < 0)
                 row_index = 7 - int(theta / angle_gap);
             else
@@ -188,7 +192,7 @@ public:
             if (row_index < 0 || row_index >= LINES)
                 continue;
 
-            double horizonAngle = atan2(point.x, point.y) * 180.0 / M_PI;
+            double horizonAngle = std::atan2(point.x, point.y) * 180.0 / M_PI;
 
             column_index = -round((horizonAngle - 90.0) / angle_x) + N_SCAN / 2;
             if (column_index >= N_SCAN)
@@ -274,10 +278,10 @@ public:
                     //排完序后，k不一定等于ind
                     int ind = cloud_smoothness[k].id;
 
-                    if (cloud_smoothness[ind].value > diff_threshold && is_sorted[ind] == 0)
+                    if (cloud_smoothness[ind].value > diff_sharp_threshold && is_sorted[ind] == 0)
                     {
 
-                        if (pick_edge_count <= sharp_count_threshold)
+                        if (pick_edge_count < sharp_count_threshold)
                         {
                             cloud_label[ind] = 2;
 
@@ -289,7 +293,7 @@ public:
 
                             // less_sharp_cloud_tmp.points.push_back(sorted_cloud->points[ind]);
                         }
-                        else if (pick_edge_count <= less_sharp_count_threshold)
+                        else if (pick_edge_count < less_sharp_count_threshold)
                         {
 
                             cloud_label[ind] = 1;
@@ -323,13 +327,12 @@ public:
                 for (int k = start_index; k <= end_index; ++k)
                 {
                     int ind = cloud_smoothness[k].id;
-                    if (cloud_smoothness[ind].value < diff_threshold && is_sorted[ind] == 0)
+                    if (cloud_smoothness[ind].value < diff_surf_threshold && is_sorted[ind] == 0)
                     {
-                        if (pick_surf_count <= surf_count_threshold)
+                        if (pick_surf_count < surf_count_threshold)
                         {
                             cloud_label[ind] = -1;
                             surf_cloud->points.push_back(sorted_cloud->points[ind]);
-                            // surf_cloud_tmp.points.push_back(sorted_cloud->points[ind]);
                         }
                         else
                         {
@@ -356,9 +359,9 @@ public:
 
                 for (int k = start_index; k <= end_index; ++k)
                 {
-                    int ind = cloud_smoothness[k].id;
-                    if (cloud_label[ind] <= 0)
-                        less_scan_surf_cloud->points.push_back(sorted_cloud->points[ind]);
+                    // int ind = cloud_smoothness[k].id;
+                    if (cloud_label[k] <= 0)
+                        less_scan_surf_cloud->points.push_back(sorted_cloud->points[k]);
                 }
             }
             PointCloud::Ptr tmp_less_surf_cloud(new PointCloud());
