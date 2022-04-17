@@ -4,7 +4,7 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-25 16:20:47
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-04-07 11:04:37
+ * @LastEditTime: 2022-04-17 19:11:48
  */
 #pragma once
 #include "../include/utility.h"
@@ -100,4 +100,36 @@ struct LidarSurfFactor
 
     Eigen::Vector3d currPoint_, closestPoint_, closePoint1_, closePoint2_, norm_;
     double ratio_;
+};
+
+struct LidarNormFactor
+{
+    LidarNormFactor(const Eigen::Vector3d currPoint, const Eigen::Vector3d norm,
+                    const double constCoeff) : currPoint_(currPoint), norm_(norm),
+                                               constCoeff_(constCoeff){
+
+                                               };
+
+    template <typename T>
+    bool operator()(const T *q, const T *t, T *residual) const
+    {
+        Eigen::Quaternion<T> Q_map_curr{q[3], q[0], q[1], q[2]};
+        Eigen::Matrix<T, 3, 1> T_map_curr{t[0], t[1], t[2]};
+        Eigen::Matrix<T, 3, 1> currPointMat{T(currPoint_.x()), T(currPoint_.y()), T(currPoint_.z())};
+
+        Eigen::Matrix<T, 3, 1> mapPointMat = Q_map_curr * currPointMat + T_map_curr;
+
+        residual[0] = norm_.dot(mapPointMat) + T(constCoeff_);
+        return true;
+    }
+
+    static ceres::CostFunction *Create(const Eigen::Vector3d currPoint, const Eigen::Vector3d norm,
+                                       const double constCoeff)
+    {
+        return (new ceres::AutoDiffCostFunction<LidarNormFactor, 1, 4, 3>(
+            new LidarNormFactor(currPoint, norm, constCoeff)));
+    };
+
+    Eigen::Vector3d currPoint_, norm_;
+    double constCoeff_;
 };

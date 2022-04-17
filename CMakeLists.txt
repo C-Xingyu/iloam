@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.0.2)
+set(CMAKE_CXX_FLAGS "-std=c++11")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
 project(iloam)
 ##SET(CMAKE_BUILD_TYPE Debug)
 ## Compile as C++11, supported in ROS Kinetic and newer

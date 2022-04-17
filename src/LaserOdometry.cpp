@@ -4,11 +4,11 @@
  * @Author: C-Xingyu
  * @Date: 2022-03-24 20:25:44
  * @LastEditors: C-Xingyu
- * @LastEditTime: 2022-04-08 22:34:35
+ * @LastEditTime: 2022-04-14 14:14:28
  */
 
 #pragma once
-#pragma GCC optimize(3)
+
 #include "../include/utility.h"
 #include <queue>
 #include <mutex>
@@ -118,6 +118,7 @@ public:
         fullCloudBuf.push(fullCloud);
         bufMutex.unlock();
     }
+
     void SharpCloudHandler(const sensor_msgs::PointCloud2::ConstPtr &sharpCloud)
     {
 
@@ -125,6 +126,7 @@ public:
         sharpCloudBuf.push(sharpCloud);
         bufMutex.unlock();
     }
+
     void LessSharpCloudHandler(const sensor_msgs::PointCloud2::ConstPtr &lessSharpCloud)
     {
 
@@ -152,7 +154,8 @@ public:
     bool IsEmpty()
     {
 
-        if (fullCloudBuf.empty() || sharpCloudBuf.empty() || surfCloudBuf.empty() || lessSharpCloudBuf.empty() || lessSurfCloudBuf.empty())
+        if (fullCloudBuf.empty() || sharpCloudBuf.empty() || surfCloudBuf.empty() || lessSharpCloudBuf.empty() ||
+            lessSurfCloudBuf.empty())
         {
             return true;
         }
@@ -171,7 +174,8 @@ public:
 
         timeLessSurfCloud = lessSurfCloudBuf.front()->header.stamp.toSec();
 
-        if ((timeSharpCloud != timeFullCloud) || (timeSurfCloud != timeFullCloud) || (timeLessSharpCloud != timeFullCloud) || (timeLessSurfCloud != timeFullCloud))
+        if ((timeSharpCloud != timeFullCloud) || (timeSurfCloud != timeFullCloud) ||
+            (timeLessSharpCloud != timeFullCloud) || (timeLessSurfCloud != timeFullCloud))
         {
 
             return false;
@@ -428,7 +432,8 @@ public:
                         }
                     }
 
-                    if (minDistPointIdx2 >= 0 && minDistPointIdx3 >= 0 && minDistPointIdx2 < lastSurfCloudNum && minDistPointIdx3 < lastSurfCloudNum)
+                    if (minDistPointIdx2 >= 0 && minDistPointIdx3 >= 0 && minDistPointIdx2 < lastSurfCloudNum &&
+                        minDistPointIdx3 < lastSurfCloudNum)
                     {
                         // printf("closestPointIdx: %d \n", closestPointIdx);
                         // printf("minDistPointIdx2: %d \n", minDistPointIdx2);
@@ -449,7 +454,8 @@ public:
 
                         double ratio = (int(surfCloud->points[i].intensity) / 100.0) / N_SCAN;
                         // printf("ratio: %f \n", ratio);
-                        ceres::CostFunction *cost_func = LidarSurfFactor::Create(currP, closestP, closeP2, closeP3, ratio);
+                        ceres::CostFunction *cost_func = LidarSurfFactor::Create(currP, closestP, closeP2, closeP3,
+                                                                                 ratio);
                         problem.AddResidualBlock(cost_func, loss_func, param_q, param_t);
                         surfCorrespondence++;
                     }
@@ -497,7 +503,8 @@ public:
         odom->pose.pose.orientation.z = Q_world_curr.z();
         odometryPub.publish(odom);
         // printf("T_last_curr: %lf %lf %lf \n", T_last_curr.x(), T_last_curr.y(), T_last_curr.z());
-        printf("Orientation: %lf  %lf  %lf  %lf \n", Q_world_curr.w(), Q_world_curr.x(), Q_world_curr.y(), Q_world_curr.z());
+        printf("Orientation: %lf  %lf  %lf  %lf \n", Q_world_curr.w(), Q_world_curr.x(), Q_world_curr.y(),
+               Q_world_curr.z());
         printf("Translation: %lf  %lf  %lf\n", T_world_curr.x(), T_world_curr.y(), T_world_curr.z());
 
         geometry_msgs::PoseStamped odomPose;
